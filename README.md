@@ -20,6 +20,8 @@ Create a [proxy](http://vertx.io/docs/vertx-service-proxy/java/#_proxy_creation)
 
 Expose certificate management through [Edge API](https://github.com/Sebajuste/edge-api)
 
+Api is mount on path _"/certificates-service"_
+
 See [OpenAPI](src/main/resources/certificate-api.yaml)
 
 

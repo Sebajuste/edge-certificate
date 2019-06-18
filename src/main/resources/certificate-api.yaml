@@ -3,7 +3,6 @@ info:
   version: 1.0.0
   title: Certificate
 
-basePath: "/certificates-service"
 tags:
   - name: Certificate
     description: "Certificate management"
