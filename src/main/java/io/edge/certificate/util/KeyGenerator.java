@@ -66,7 +66,7 @@ public class KeyGenerator {
 
 	public static enum Algorithm {
 
-		RSA_SHA128("RSA", "SHA128withRSA", 1024),
+		RSA_SHA1("RSA", "SHA1withRSA", 1024),
 		RSA_SHA256("RSA", "SHA256withRSA", 1024),
 		ECDSA_SHA256("ECDSA", "SHA256withECDSA", 256),
 		ECDSA_SHA1("ECDSA", "SHA1withECDSA", 256);
@@ -168,6 +168,7 @@ public class KeyGenerator {
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		new PemFile(key, description).write(out);
+		
 		return out.toString();
 	}
 
@@ -252,8 +253,6 @@ public class KeyGenerator {
 		}
 
 		X500Name issuer = nameBuilder.build();
-
-		// KeyPair keyPair = generateKeyPair();
 
 		JcaPKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(issuer, keyPair.getPublic());
 
