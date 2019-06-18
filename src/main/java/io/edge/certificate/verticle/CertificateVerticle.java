@@ -3,7 +3,10 @@ package io.edge.certificate.verticle;
 import io.edge.certificate.dao.CertificateDao;
 import io.edge.certificate.dao.mongo.CertificateDaoMongo;
 import io.edge.certificate.service.CertificateService;
+import io.edge.certificate.service.CertificateServiceAPI;
+import io.edge.certificate.service.impl.CertificateServiceAPIImpl;
 import io.edge.certificate.service.impl.CertificateServiceImpl;
+import io.edge.utils.webapiservice.WebApiService;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.mongo.MongoClient;
@@ -43,6 +46,20 @@ public class CertificateVerticle extends AbstractVerticle {
 
 		serviceBinder.setAddress(CertificateService.ADDRESS).register(CertificateService.class, certificateService);
 
+		/*
+		 * API Service
+		 */
+		
+		serviceBinder.setAddress(CertificateServiceAPI.ADDRESS).register(CertificateServiceAPI.class, new CertificateServiceAPIImpl(certificateService));
+		
+		JsonObject config = new JsonObject()//
+				.put("name", "IoT-Shadow")//
+				.put("endpoint", "io.edge.certificates.webapi-service.yaml")//
+				.put("file", "src/main/resources/certificate-api.yaml")//
+				.put("subpath", "/certificates-service");
+
+		WebApiService.create(vertx).bind(config);
+		
 	}
 
 }

@@ -168,6 +168,11 @@
 
 		<dependency>
 			<groupId>io.vertx</groupId>
+			<artifactId>vertx-web-api-service</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>io.vertx</groupId>
 			<artifactId>vertx-mongo-client</artifactId>
 		</dependency>
 
@@ -205,6 +210,13 @@
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-ext-jdk16</artifactId>
 			<version>1.46</version>
+		</dependency>
+		
+		<!-- Edge -->
+		<dependency>
+			<groupId>io.edge</groupId>
+			<artifactId>edge-utils</artifactId>
+			<version>${project.version}</version>
 		</dependency>
 
 		<!-- TEST -->

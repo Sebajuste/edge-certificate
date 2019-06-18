@@ -16,6 +16,12 @@ The service is only available on Hezelcast cluster through Vert.x event bus serv
 
 Create a [proxy](http://vertx.io/docs/vertx-service-proxy/java/#_proxy_creation) with io.edge.certificate.service.CertificateService to use it.
 
+### Web API
+
+Expose certificate management through [Edge API](https://github.com/Sebajuste/edge-api)
+
+See [OpenAPI](src/main/resources/certificate-api.yaml)
+
 
 ### Certificate persistence
 

@@ -1,0 +1,135 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: Certificate
+
+basePath: "/certificates-service"
+tags:
+  - name: Certificate
+    description: "Certificate management"
+
+paths:
+  /accounts/{account}/certificates/{name}:
+    x-vertx-event-bus:
+      address: edge.certificates.service-api
+      timeout: 1000
+    get:
+      operationId: getCertificate
+      description: "Retreive the PEM certificate"
+      tags:
+        - Certificate
+      parameters:
+        - name: account
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The account of certificate registry"
+        - name: name
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The name of the certificate"
+      responses:
+        200:
+          description: "PEM certificate"
+        204:
+          description: "Certificate doesn't exist"
+    put:
+      operationId: generateCertificate
+      description: "generate a new certificate"
+      tags:
+        - Certificate
+      parameters:
+        - name: account
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The account of certificate registry"
+        - name: name
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The name of the certificate"
+        - name: algorithm
+          in: query
+          schema:
+            type: string
+            enum: [RSA_SHA1, RSA_SHA256, ECDSA_SHA1, ECDSA_SHA256]
+          required: true
+          description: "The algorithm type"
+        - name: commonName
+          in: query
+          schema:
+            type: string
+          required: true
+          description: "The name to be protected by certificate"
+        - name: notAfterTimestamp
+          in: query
+          schema:
+            type: integer
+          required: true
+          description: "Timestamp of the end of the validity in seconds"
+        - name: organization
+          in: query
+          schema:
+            type: string
+          description: "Claim organisation name"
+        - name: organizationalUnit
+          in: query
+          schema:
+            type: string
+          description: "Claim organizationalUnit name"
+        - name: caCertName
+          in: query
+          schema:
+            type: string
+          description: "The name of the CA certificate"
+      responses:
+        200:
+          description: "PEM certificate"
+          content:
+            application/json:
+              schema: 
+                $ref: "#/components/schemas/certificate-response"
+    delete:
+      operationId: deleteCertificate
+      description: "Delete a certificate"
+      tags:
+        - Certificate
+      parameters:
+        - name: account
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The account of certificate registry"
+        - name: name
+          in: path
+          schema:
+            type: string
+          required: true
+          description: "The name of the certificate"
+      responses:
+        204:
+          description: "Delete succeeded"
+
+components:
+  schemas:
+    certificate-response:
+      properties:
+        certificate:
+          type: string
+          description: "PEM certificate"
+        keys:
+          type: object
+          properties:
+            private:
+              type: string
+              description: "PEM private key"
+            public:
+              type: string
+              description: "PEM public key"
