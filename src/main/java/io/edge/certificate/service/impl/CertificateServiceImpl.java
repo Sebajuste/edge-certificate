@@ -12,7 +12,6 @@ import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.time.Instant;
-import java.util.Date;
 
 import io.edge.certificate.dao.CertificateDao;
 import io.edge.certificate.service.CertificateService;
@@ -23,8 +22,12 @@ import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 
 public class CertificateServiceImpl implements CertificateService {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(CertificateServiceImpl.class);
 
 	private final CertificateDao certificateDao;
 
@@ -34,37 +37,35 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void createCertificate(String account, String name, String algorithm, JsonObject claims, Date notAfter, Handler<AsyncResult<JsonObject>> resultHandler) {
+	public void createCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, Handler<AsyncResult<JsonObject>> resultHandler) {
 
 		Future<JsonObject> future = Future.future();
+
+		future.setHandler(resultHandler);
 
 		try {
 			KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(algorithm));
 
 			KeyPair keyPair = keyGen.generateKeyPair();
 
-			X509Certificate x509Certificate = keyGen.createCertificate(keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), notAfter.toInstant());
+			X509Certificate x509Certificate = keyGen.createCertificate(keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), Instant.ofEpochSecond(notAfterTimestamp));
 
-			String privateKey = KeyGenerator.toPem(keyPair.getPrivate(), "PRIVATE KEY");
-
-			String publicKey = KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY");
-
-			String pem = KeyGenerator.toPem(x509Certificate, name);
-
-			JsonObject certificate = new JsonObject()//
+			JsonObject keys = new JsonObject()//
 					.put("algorithm", algorithm) //
-					.put("privateKey", privateKey)//
-					.put("publicKey", publicKey)//
-					.put("pem", pem);
+					.put("private", KeyGenerator.toPem(keyPair.getPrivate(), "PRIVATE KEY"))//
+					.put("public", KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY"));
 
-			this.certificateDao.saveCertificate(account, name, certificate, ar -> {
+			String cert = KeyGenerator.toPem(x509Certificate, name);
+
+			this.certificateDao.saveCertificate(account, name, keys, cert, ar -> {
 
 				if (ar.succeeded()) {
-					if (ar.result()) {
-						future.complete(certificate);
-					} else {
-						future.fail("Certificate not saved");
-					}
+
+					JsonObject certificate = new JsonObject()//
+							.put("keys", keys)//
+							.put("certificate", cert);
+
+					future.complete(certificate);
 				} else {
 					future.fail(ar.cause());
 				}
@@ -72,84 +73,90 @@ public class CertificateServiceImpl implements CertificateService {
 			});
 
 		} catch (Exception e) {
+			LOGGER.error("Unknown error : ", e);
 			future.fail(e);
 		}
 
-		future.setHandler(resultHandler);
-
 	}
 
 	@Override
-	public void addCrertifivate(String account, String name, String certPEM, String privateKeyPEM, String publicKeyPEM, Handler<AsyncResult<Boolean>> resultHandler) {
-
-		JsonObject certificate = new JsonObject()//
-				.put("privateKey", privateKeyPEM)//
-				.put("publicKey", publicKeyPEM)//
-				.put("pem", certPEM);
+	public void addCrertificate(String account, String name, String certPEM, String privateKeyPEM, String publicKeyPEM, Handler<AsyncResult<Boolean>> resultHandler) {
 
 		Future<Boolean> future = Future.future();
 
-		this.certificateDao.saveCertificate(account, name, certificate, future);
-
 		future.setHandler(resultHandler);
+
+		JsonObject keys = new JsonObject().put("private", privateKeyPEM).put("public", publicKeyPEM);
+
+		this.certificateDao.saveCertificate(account, name, keys, certPEM, future);
 
 	}
 
 	@Override
-	public void createSignedCertificate(String account, String name, String algorithm, JsonObject claims, Date notAfter, String caCertName, Handler<AsyncResult<JsonObject>> resultHandler) {
+	public void createSignedCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, String caCertName, Handler<AsyncResult<JsonObject>> resultHandler) {
+
+		LOGGER.info("createSignedCertificate");
 
 		Future<JsonObject> future = Future.future();
 
 		try {
 			KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(algorithm));
 
-			this.certificateDao.findCertificate(account, caCertName, ar -> {
+			this.certificateDao.findCertificate(account, caCertName, true, ar -> {
 
 				if (ar.succeeded()) {
 
 					try {
 
 						JsonObject caCertificate = ar.result();
+						
+						JsonObject caKeys = caCertificate.getJsonObject("keys");
 
-						X509Certificate caCert = KeyGenerator.decodeCertificate(caCertificate.getString("pem"));
+						X509Certificate caCert = KeyGenerator.decodeCertificate(caCertificate.getString("certificate"));
 
-						KeyPair caKeyPair = keyGen.decodeKeyPair(caCertificate.getString("privateKey"), caCertificate.getString("publicKey"));
+						KeyPair caKeyPair = keyGen.decodeKeyPair(caKeys.getString("private"), caKeys.getString("public"));
 
 						KeyPair keyPair = keyGen.generateKeyPair();
 
-						X509Certificate x509Certificate = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), notAfter.toInstant());
+						X509Certificate x509Certificate = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), Instant.ofEpochSecond(notAfterTimestamp));
 
-						JsonObject certificate = new JsonObject()//
+						JsonObject keys = new JsonObject()//
 								.put("algorithm", algorithm) //
-								.put("privateKey", KeyGenerator.toPem(keyPair.getPrivate(), "PRIVATE KEY"))//
-								.put("publicKey", KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY"))//
-								.put("pem", KeyGenerator.toPem(x509Certificate, name));
+								.put("private", KeyGenerator.toPem(keyPair.getPrivate(), "PRIVATE KEY"))//
+								.put("public", KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY"));
 
-						this.certificateDao.saveCertificate(account, name, certificate, saveResult -> {
+						String cert = KeyGenerator.toPem(x509Certificate, name);
+
+						this.certificateDao.saveCertificate(account, name, keys, cert, saveResult -> {
 
 							if (saveResult.succeeded()) {
-								if (saveResult.result()) {
-									future.complete(certificate);
-								} else {
-									future.fail("Certificate not saved");
-								}
+
+								JsonObject certificate = new JsonObject()//
+										.put("keys", keys)//
+										.put("certificate", cert);
+
+								future.complete(certificate);
 							} else {
+								LOGGER.error(ar.cause());
 								future.fail(ar.cause());
 							}
 
 						});
 
 					} catch (Exception e) {
+						LOGGER.error(ar.cause());
 						future.fail(e);
 					}
 
 				} else {
+					LOGGER.error(ar.cause());
 					future.fail(ar.cause());
 				}
 
 			});
 
 		} catch (Exception e) {
+			LOGGER.error("Invalid algorithm : " + e.getMessage(), e);
 			future.fail(e);
 		}
 
@@ -158,11 +165,11 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void verify(String account, String certName, Handler<AsyncResult<Boolean>> resultHandler) {
+	public void verifyCertificate(String account, String certName, Handler<AsyncResult<Boolean>> resultHandler) {
 
 		Future<Boolean> future = Future.future();
 
-		this.certificateDao.findCertificate(account, certName, ar -> {
+		this.certificateDao.findCertificate(account, certName, false, ar -> {
 
 			if (ar.succeeded()) {
 
@@ -170,7 +177,7 @@ public class CertificateServiceImpl implements CertificateService {
 
 				try {
 
-					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("pem"));
+					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("certificate"));
 
 					cert.checkValidity();
 					future.complete(true);
@@ -192,13 +199,13 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void verify(String account, String certName, String caCertName, Handler<AsyncResult<Boolean>> resultHandler) {
+	public void verifyCertificateFromCA(String account, String certName, String caCertName, Handler<AsyncResult<Boolean>> resultHandler) {
 
 		Future<JsonObject> certFuture = Future.future();
-		this.certificateDao.findCertificate(account, certName, certFuture);
+		this.certificateDao.findCertificate(account, certName, false, certFuture);
 
 		Future<JsonObject> caCertFuture = Future.future();
-		this.certificateDao.findCertificate(account, caCertName, caCertFuture);
+		this.certificateDao.findCertificate(account, caCertName, true, caCertFuture);
 
 		Future<Boolean> future = Future.future();
 
@@ -213,21 +220,25 @@ public class CertificateServiceImpl implements CertificateService {
 				JsonObject caCertificate = cf.resultAt(1);
 
 				try {
-					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("pem"));
+					
+					JsonObject caKeys = caCertificate.getJsonObject("keys");
+					
+					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("certificate"));
 
-					KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(caCertificate.getString("algorithm")));
+					KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(caKeys.getString("algorithm")));
 
-					KeyPair caKeyPair = keyGen.decodeKeyPair(caCertificate.getString("privateKey"), caCertificate.getString("publicKey"));
+					KeyPair caKeyPair = keyGen.decodeKeyPair(caKeys.getString("private"), caKeys.getString("public"));
 
 					cert.verify(caKeyPair.getPublic());
-					
+
 					cert.checkValidity();
 
 					future.complete(true);
 
 				} catch (InvalidKeyException | SignatureException e) {
 					future.complete(false);
-				} catch(CertificateExpiredException | CertificateNotYetValidException e) {
+				} catch (CertificateExpiredException
+						| CertificateNotYetValidException e) {
 					future.complete(false);
 				} catch (CertificateException | NoSuchAlgorithmException
 						| NoSuchProviderException | InvalidKeySpecException
@@ -246,9 +257,9 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void findCertificate(String account, String name, Handler<AsyncResult<JsonObject>> resultHandler) {
+	public void findCertificate(String account, String name, boolean loadKeys, Handler<AsyncResult<JsonObject>> resultHandler) {
 
-		this.certificateDao.findCertificate(account, name, resultHandler);
+		this.certificateDao.findCertificate(account, name, loadKeys, resultHandler);
 
 	}
 

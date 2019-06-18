@@ -34,7 +34,7 @@ public class CertificateVerticle extends AbstractVerticle {
 		CertificateDao certificateDao = new CertificateDaoMongo(vertx, mongoClient);
 
 		/*
-		 * Bus Servive
+		 * Bus Service
 		 */
 
 		ServiceBinder serviceBinder = new ServiceBinder(vertx);
