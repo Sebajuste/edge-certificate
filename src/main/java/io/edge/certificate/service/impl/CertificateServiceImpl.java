@@ -18,8 +18,8 @@ import io.edge.certificate.util.KeyGenerator;
 import io.edge.certificate.util.KeyGenerator.Algorithm;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -38,9 +38,9 @@ public class CertificateServiceImpl implements CertificateService {
 	@Override
 	public void createCertificate(String account, String name, String algorithm, JsonObject claims, JsonObject options, Handler<AsyncResult<JsonObject>> resultHandler) {
 
-		Future<JsonObject> future = Future.future();
+		Promise<JsonObject> promise = Promise.promise();
 
-		future.setHandler(resultHandler);
+		promise.future().setHandler(resultHandler);
 
 		try {
 			KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(algorithm));
@@ -66,16 +66,16 @@ public class CertificateServiceImpl implements CertificateService {
 							.put("keys", keys)//
 							.put("certificate", cert);
 
-					future.complete(certificate);
+					promise.complete(certificate);
 				} else {
-					future.fail(ar.cause());
+					promise.fail(ar.cause());
 				}
 
 			});
 
 		} catch (Exception e) {
 			LOGGER.error("Unknown error : ", e);
-			future.fail(e);
+			promise.fail(e);
 		}
 
 	}
@@ -83,13 +83,13 @@ public class CertificateServiceImpl implements CertificateService {
 	@Override
 	public void addCrertificate(String account, String name, String certPEM, String privateKeyPEM, String publicKeyPEM, Handler<AsyncResult<Boolean>> resultHandler) {
 
-		Future<Boolean> future = Future.future();
+		Promise<Boolean> promise = Promise.promise();
 
-		future.setHandler(resultHandler);
+		promise.future().setHandler(resultHandler);
 
 		JsonObject keys = new JsonObject().put("private", privateKeyPEM).put("public", publicKeyPEM);
 
-		this.certificateDao.saveCertificate(account, name, keys, certPEM, future);
+		this.certificateDao.saveCertificate(account, name, keys, certPEM, promise);
 
 	}
 
@@ -98,7 +98,9 @@ public class CertificateServiceImpl implements CertificateService {
 
 		LOGGER.info("createSignedCertificate [name=" + name + ", caCertName=" + caCertName + "]");
 
-		Future<JsonObject> future = Future.future();
+		Promise<JsonObject> promise = Promise.promise();
+
+		promise.future().setHandler(resultHandler);
 
 		try {
 			KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(algorithm));
@@ -136,39 +138,39 @@ public class CertificateServiceImpl implements CertificateService {
 										.put("keys", keys)//
 										.put("certificate", cert);
 
-								future.complete(certificate);
+								promise.complete(certificate);
 							} else {
 								LOGGER.error(ar.cause());
-								future.fail(ar.cause());
+								promise.fail(ar.cause());
 							}
 
 						});
 
 					} catch (Exception e) {
 						LOGGER.error(e.getMessage(), e);
-						future.fail(e);
+						promise.fail(e);
 					}
 
 				} else {
 					LOGGER.error(ar.cause());
-					future.fail(ar.cause());
+					promise.fail(ar.cause());
 				}
 
 			});
 
 		} catch (Exception e) {
 			LOGGER.error("Invalid algorithm : " + e.getMessage(), e);
-			future.fail(e);
+			promise.fail(e);
 		}
-
-		future.setHandler(resultHandler);
 
 	}
 
 	@Override
 	public void verifyCertificate(String account, String certName, Handler<AsyncResult<Boolean>> resultHandler) {
 
-		Future<Boolean> future = Future.future();
+		Promise<Boolean> promise = Promise.promise();
+
+		promise.future().setHandler(resultHandler);
 
 		this.certificateDao.findCertificate(account, certName, false, ar -> {
 
@@ -181,36 +183,36 @@ public class CertificateServiceImpl implements CertificateService {
 					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("certificate"));
 
 					cert.checkValidity();
-					future.complete(true);
+					promise.complete(true);
 				} catch (CertificateExpiredException
 						| CertificateNotYetValidException e) {
-					future.complete(false);
+					promise.complete(false);
 				} catch (Exception e) {
-					future.fail(e);
+					promise.fail(e);
 				}
 
 			} else {
-				future.fail(ar.cause());
+				promise.fail(ar.cause());
 			}
 
 		});
-
-		future.setHandler(resultHandler);
 
 	}
 
 	@Override
 	public void verifyCertificateFromCA(String account, String certName, String caCertName, Handler<AsyncResult<Boolean>> resultHandler) {
 
-		Future<JsonObject> certFuture = Future.future();
-		this.certificateDao.findCertificate(account, certName, false, certFuture);
+		Promise<JsonObject> certPromise = Promise.promise();
+		this.certificateDao.findCertificate(account, certName, false, certPromise);
 
-		Future<JsonObject> caCertFuture = Future.future();
-		this.certificateDao.findCertificate(account, caCertName, true, caCertFuture);
+		Promise<JsonObject> caCertPromise = Promise.promise();
+		this.certificateDao.findCertificate(account, caCertName, true, caCertPromise);
 
-		Future<Boolean> future = Future.future();
+		Promise<Boolean> promise = Promise.promise();
+		
+		promise.future().setHandler(resultHandler);
 
-		CompositeFuture.all(certFuture, caCertFuture).setHandler(ar -> {
+		CompositeFuture.all(certPromise.future(), caCertPromise.future()).setHandler(ar -> {
 
 			if (ar.succeeded()) {
 
@@ -234,26 +236,26 @@ public class CertificateServiceImpl implements CertificateService {
 
 					cert.checkValidity();
 
-					future.complete(true);
+					promise.complete(true);
 
 				} catch (InvalidKeyException | SignatureException e) {
-					future.complete(false);
+					promise.complete(false);
 				} catch (CertificateExpiredException
 						| CertificateNotYetValidException e) {
-					future.complete(false);
+					promise.complete(false);
 				} catch (CertificateException | NoSuchAlgorithmException
 						| NoSuchProviderException | InvalidKeySpecException
 						| IOException e) {
-					future.fail(e);
+					promise.fail(e);
 				}
 
 			} else {
-				future.fail(ar.cause());
+				promise.fail(ar.cause());
 			}
 
 		});
 
-		future.setHandler(resultHandler);
+		
 
 	}
 

@@ -4,8 +4,8 @@ import java.util.List;
 
 import io.edge.certificate.dao.CertificateDao;
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
@@ -38,20 +38,22 @@ public class CertificateDaoMongo implements CertificateDao {
 		UpdateOptions options = new UpdateOptions();
 		options.setUpsert(true);
 
-		Future<Boolean> future = Future.future();
+		Promise<Boolean> promise = Promise.promise();
+		
+		promise.future().setHandler(resultHandler);
 
 		this.mongoClient.updateCollectionWithOptions(CertificateDaoMongo.COLLECTION_NAME, query, update, options, ar -> {
 
 			if (ar.succeeded()) {
-				future.complete(ar.result().getDocModified() > 0);
+				promise.complete(ar.result().getDocModified() > 0);
 			} else {
 				LOGGER.error("Error persist certificate : " + ar.cause().getMessage(), ar.cause());
-				future.fail(ar.cause());
+				promise.fail(ar.cause());
 			}
 
 		});
 
-		future.setHandler(resultHandler);
+		
 
 	}
 
@@ -60,11 +62,8 @@ public class CertificateDaoMongo implements CertificateDao {
 
 		JsonObject query = new JsonObject().put("account", account);
 
-		Future<List<JsonObject>> future = Future.future();
+		this.mongoClient.find(COLLECTION_NAME, query, resultHandler);
 
-		this.mongoClient.find(COLLECTION_NAME, query, future);
-
-		future.setHandler(resultHandler);
 	}
 
 	@Override
@@ -81,9 +80,9 @@ public class CertificateDaoMongo implements CertificateDao {
 			fields.put("keys", 1);
 		}
 
-		Future<JsonObject> future = Future.future();
-
-		future.setHandler(resultHandler);
+		Promise<JsonObject> promise = Promise.promise();
+		
+		promise.future().setHandler(resultHandler);
 
 		this.mongoClient.findOne(COLLECTION_NAME, query, fields, ar -> {
 
@@ -100,13 +99,13 @@ public class CertificateDaoMongo implements CertificateDao {
 						certificate.put("keys", result.getJsonObject("keys"));
 					}
 
-					future.complete(certificate);
+					promise.complete(certificate);
 				} else {
-					future.complete();
+					promise.complete();
 				}
 			} else {
 				LOGGER.error(ar.cause());
-				future.fail(ar.cause());
+				promise.fail(ar.cause());
 			}
 
 		});
@@ -120,17 +119,18 @@ public class CertificateDaoMongo implements CertificateDao {
 				.put("account", account)//
 				.put("name", name);
 
-		Future<Boolean> future = Future.future();
+		Promise<Boolean> promise = Promise.promise();
+		
+		promise.future().setHandler(resultHandler);
 
 		this.mongoClient.removeDocument(COLLECTION_NAME, query, ar -> {
 			if (ar.succeeded()) {
-				future.complete(ar.result().getRemovedCount() > 0);
+				promise.complete(ar.result().getRemovedCount() > 0);
 			} else {
-				future.fail(ar.cause());
+				promise.fail(ar.cause());
 			}
 		});
 
-		future.setHandler(resultHandler);
 	}
 
 }

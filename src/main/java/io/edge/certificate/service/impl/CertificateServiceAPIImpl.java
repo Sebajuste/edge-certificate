@@ -5,8 +5,8 @@ import java.time.Instant;
 import io.edge.certificate.service.CertificateService;
 import io.edge.certificate.service.CertificateServiceAPI;
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
@@ -28,9 +28,9 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 	@Override
 	public void getCertificate(String account, String name, OperationRequest context, Handler<AsyncResult<OperationResponse>> resultHandler) {
 
-		Future<OperationResponse> future = Future.future();
+		Promise<OperationResponse> promise = Promise.promise();
 
-		future.setHandler(resultHandler);
+		promise.future().setHandler(resultHandler);
 
 		this.certificateService.findCertificate(account, name, false, ar -> {
 
@@ -38,13 +38,13 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 
 				JsonObject certificate = ar.result();
 				if (certificate != null) {
-					future.complete(OperationResponse.completedWithPlainText(Buffer.buffer(ar.result().getString("certificate"))));
+					promise.complete(OperationResponse.completedWithPlainText(Buffer.buffer(ar.result().getString("certificate"))));
 				} else {
-					future.complete(new OperationResponse().setStatusCode(204));
+					promise.complete(new OperationResponse().setStatusCode(204));
 				}
 			} else {
 				LOGGER.error(ar.cause());
-				future.complete(new OperationResponse().setStatusCode(500));
+				promise.complete(new OperationResponse().setStatusCode(500));
 			}
 
 		});
@@ -54,15 +54,15 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 	@Override
 	public void generateCertificate(String account, String name, String algorithm, String commonName, long validity, boolean cA, boolean auth, String caCertName, JsonObject body, OperationRequest context, Handler<AsyncResult<OperationResponse>> resultHandler) {
 
-		Future<OperationResponse> future = Future.future();
+		Promise<OperationResponse> promise = Promise.promise();
 
-		future.setHandler(resultHandler);
+		promise.future().setHandler(resultHandler);
 
 		Handler<AsyncResult<JsonObject>> createResultHandler = ar -> {
 			if (ar.succeeded()) {
-				future.complete(OperationResponse.completedWithJson(ar.result()));
+				promise.complete(OperationResponse.completedWithJson(ar.result()));
 			} else {
-				future.complete(new OperationResponse().setStatusCode(500));
+				promise.complete(new OperationResponse().setStatusCode(500));
 			}
 		};
 		
@@ -98,7 +98,7 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 
 		} catch(Exception e) {
 			LOGGER.error(e);
-			future.complete(new OperationResponse().setStatusCode(500));
+			promise.complete(new OperationResponse().setStatusCode(500));
 		}
 		
 	}
@@ -106,15 +106,15 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 	@Override
 	public void deleteCertificate(String account, String name, OperationRequest context, Handler<AsyncResult<OperationResponse>> resultHandler) {
 
-		Future<OperationResponse> future = Future.future();
+		Promise<OperationResponse> promise = Promise.promise();
 
-		future.setHandler(resultHandler);
+		promise.future().setHandler(resultHandler);
 
 		this.certificateService.deleteCertificate(account, name, ar -> {
 			if (ar.succeeded()) {
-				future.complete(new OperationResponse().setStatusCode(204));
+				promise.complete(new OperationResponse().setStatusCode(204));
 			} else {
-				future.complete(new OperationResponse().setStatusCode(500));
+				promise.complete(new OperationResponse().setStatusCode(500));
 			}
 		});
 

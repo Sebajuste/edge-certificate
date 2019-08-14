@@ -8,12 +8,13 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
 
 public class LauncherVerticle extends AbstractVerticle {
 
 	@Override
-	public void start(Future<Void> startFuture) {
+	public void start(Promise<Void> startPromise) {
 
 		ConfigRetriever.create(vertx).getConfig(ar -> {
 
@@ -26,22 +27,22 @@ public class LauncherVerticle extends AbstractVerticle {
 				@SuppressWarnings("rawtypes")
 				List<Future> futureList = new ArrayList<>();
 
-				Future<String> certDeployFuture = Future.future();
-				this.vertx.deployVerticle(CertificateVerticle.class.getName(), options, certDeployFuture);
-				futureList.add(certDeployFuture);
+				Promise<String> certDeployPromise = Promise.promise();
+				this.vertx.deployVerticle(CertificateVerticle.class.getName(), options, certDeployPromise);
+				futureList.add(certDeployPromise.future());
 
 				CompositeFuture.all(futureList).setHandler(deployResult -> {
 
 					if (deployResult.succeeded()) {
-						startFuture.complete();
+						startPromise.complete();
 					} else {
-						startFuture.fail(deployResult.cause());
+						startPromise.fail(deployResult.cause());
 					}
 
 				});
 
 			} else {
-				startFuture.fail(ar.cause());
+				startPromise.fail(ar.cause());
 			}
 
 		});
