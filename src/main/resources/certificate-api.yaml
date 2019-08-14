@@ -66,33 +66,42 @@ paths:
             type: string
           required: true
           description: "The name to be protected by certificate"
-        - name: notAfterTimestamp
+        - name: validity
           in: query
           schema:
             type: integer
           required: true
-          description: "Timestamp of the end of the validity in seconds"
-        - name: organization
+          description: "Times of the validity in seconds"
+        - name: ca
           in: query
           schema:
-            type: string
-          description: "Claim organisation name"
-        - name: organizationalUnit
+            type: boolean
+          required: false
+          description: "Set true if the certificate must be CA"
+        - name: auth
           in: query
           schema:
-            type: string
-          description: "Claim organizationalUnit name"
+            type: boolean
+          required: false
+          description: "Set true if the certificate could be use as authentication"
         - name: caCertName
           in: query
           schema:
             type: string
+          required: false
           description: "The name of the CA certificate"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/claims"
       responses:
         200:
           description: "PEM certificate"
           content:
             application/json:
-              schema: 
+              schema:
                 $ref: "#/components/schemas/certificate-response"
     delete:
       operationId: deleteCertificate
@@ -118,6 +127,22 @@ paths:
 
 components:
   schemas:
+
+    claims:
+      properties:
+        organization:
+          type: string
+        organizationalUnit:
+          type: string
+        locality:
+          type: string
+        state:
+          type: string
+        country:
+          type: string
+        email:
+          type: string
+
     certificate-response:
       properties:
         certificate:

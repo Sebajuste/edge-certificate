@@ -1,5 +1,7 @@
 package io.edge.certificate.service.impl;
 
+import java.time.Instant;
+
 import io.edge.certificate.service.CertificateService;
 import io.edge.certificate.service.CertificateServiceAPI;
 import io.vertx.core.AsyncResult;
@@ -50,16 +52,11 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 	}
 
 	@Override
-	public void generateCertificate(String account, String name, String algorithm, String commonName, long notAfterTimestamp, String organization, String organizationalUnit, String caCertName, OperationRequest context, Handler<AsyncResult<OperationResponse>> resultHandler) {
+	public void generateCertificate(String account, String name, String algorithm, String commonName, long validity, boolean cA, boolean auth, String caCertName, JsonObject body, OperationRequest context, Handler<AsyncResult<OperationResponse>> resultHandler) {
 
 		Future<OperationResponse> future = Future.future();
 
 		future.setHandler(resultHandler);
-
-		JsonObject claims = new JsonObject()//
-				.put("commonName", commonName)//
-				.put("organization", organization)//
-				.put("organizationalUnit", organizationalUnit);
 
 		Handler<AsyncResult<JsonObject>> createResultHandler = ar -> {
 			if (ar.succeeded()) {
@@ -68,13 +65,42 @@ public class CertificateServiceAPIImpl implements CertificateServiceAPI {
 				future.complete(new OperationResponse().setStatusCode(500));
 			}
 		};
+		
+		try {
 
-		if (caCertName != null) {
-			this.certificateService.createSignedCertificate(account, name, algorithm, claims, notAfterTimestamp, caCertName, createResultHandler);
-		} else {
-			this.certificateService.createCertificate(account, name, algorithm, claims, notAfterTimestamp, createResultHandler);
+		JsonObject claims = new JsonObject();
+
+		if (body != null) {
+			claims.mergeIn(body);
 		}
 
+		claims.put("commonName", commonName);
+
+		LOGGER.info("body : " + body);
+		LOGGER.info("claims : " + claims);
+		LOGGER.info("cA : " + cA);
+
+		
+		long notAfterTimestamp = Instant.now().getEpochSecond() + validity;
+		
+		JsonObject options = new JsonObject()//
+				.put("ca", cA)//
+				.put("auth", auth)//
+				.put("notAfter", Instant.ofEpochSecond(notAfterTimestamp) );
+		
+		
+
+		if (caCertName != null) {
+			this.certificateService.createSignedCertificate(account, name, caCertName, algorithm, claims, options, createResultHandler);
+		} else {
+			this.certificateService.createCertificate(account, name, algorithm, claims, options, createResultHandler);
+		}
+
+		} catch(Exception e) {
+			LOGGER.error(e);
+			future.complete(new OperationResponse().setStatusCode(500));
+		}
+		
 	}
 
 	@Override

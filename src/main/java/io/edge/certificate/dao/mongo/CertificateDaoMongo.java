@@ -81,8 +81,6 @@ public class CertificateDaoMongo implements CertificateDao {
 			fields.put("keys", 1);
 		}
 
-		LOGGER.info("findCertificate [query=" + query + ", fields=" + fields + "]");
-
 		Future<JsonObject> future = Future.future();
 
 		future.setHandler(resultHandler);
@@ -92,8 +90,6 @@ public class CertificateDaoMongo implements CertificateDao {
 			if (ar.succeeded()) {
 
 				JsonObject result = ar.result();
-
-				LOGGER.info("result for [account=" + account + ", name=" + name + "] : " + result);
 
 				if (result != null) {
 
