@@ -42,15 +42,29 @@ public class CertificateServiceImplTest {
 
 		long notAfter = Instant.now().getEpochSecond() + 600L;
 
-		JsonObject claims = new JsonObject().put("commonName", "test");
+		JsonObject caClaims = new JsonObject()//
+				.put("commonName", "CA certificate")//
+				.put("organization", "Edge")//
+				.put("organizationalUnit", "IoT");
+
+		JsonObject caOptions = new JsonObject()//
+				.put("ca", true).put("notAfter", Instant.ofEpochSecond(notAfter));
 
 		Async async = context.async();
 
-		certService.createCertificate(ACCOUNT, "ca-cert-test", "RSA_SHA1", claims, notAfter, ar1 -> {
+		certService.createCertificate(ACCOUNT, "ca-cert-test", "RSA_SHA1", caClaims, caOptions, ar1 -> {
 
 			if (ar1.succeeded()) {
 
-				certService.createSignedCertificate(ACCOUNT, "cert-test", "RSA_SHA1", claims, notAfter, "ca-cert-test", ar2 -> {
+				JsonObject serverClaims = new JsonObject()//
+						.put("commonName", "MQTT Server")//
+						.put("organization", "Edge")//
+						.put("organizationalUnit", "IoT");
+
+				JsonObject oserverOtions = new JsonObject()//
+						.put("notAfter", Instant.ofEpochSecond(notAfter));
+
+				certService.createSignedCertificate(ACCOUNT, "cert-test", "ca-cert-test", "RSA_SHA1", serverClaims, oserverOtions, ar2 -> {
 
 					if (ar2.succeeded()) {
 
@@ -67,6 +81,43 @@ public class CertificateServiceImplTest {
 							}
 
 						});
+
+					} else {
+						context.fail(ar2.cause());
+					}
+
+				});
+
+			} else {
+				context.fail(ar1.cause());
+			}
+
+		});
+
+	}
+
+	@Test
+	public void verifyCertificateTest(TestContext context) {
+
+		JsonObject claims = new JsonObject().put("commonName", "test");
+
+		long notAfterTimestamp = Instant.now().getEpochSecond() + 600L;
+
+		JsonObject options = new JsonObject().put("notAfter", Instant.ofEpochSecond(notAfterTimestamp));
+
+		Async async = context.async();
+
+		certService.createCertificate(ACCOUNT, "cert-test", "RSA_SHA1", claims, options, ar1 -> {
+
+			if (ar1.succeeded()) {
+
+				certService.verifyCertificate(ACCOUNT, "cert-test", ar2 -> {
+
+					if (ar2.succeeded()) {
+
+						context.assertTrue(ar2.result());
+
+						async.complete();
 
 					} else {
 						context.fail(ar2.cause());

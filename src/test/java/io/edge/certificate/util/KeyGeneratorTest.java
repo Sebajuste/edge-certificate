@@ -13,15 +13,16 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
+import org.bouncycastle.cert.CertIOException;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.pkcs.PKCSException;
 import org.junit.Test;
 
 import io.edge.certificate.util.KeyGenerator.Algorithm;
+import io.vertx.core.json.JsonObject;
 
 public class KeyGeneratorTest {
 
@@ -43,7 +44,7 @@ public class KeyGeneratorTest {
 	}
 
 	@Test
-	public void genCertificateTest() throws InvalidKeyException, CertificateException, NoSuchAlgorithmException, NoSuchProviderException, OperatorCreationException, SignatureException {
+	public void genCertificateTest() throws InvalidKeyException, CertificateException, NoSuchAlgorithmException, NoSuchProviderException, OperatorCreationException, SignatureException, CertIOException {
 
 		KeyGenerator keyGen = KeyGenerator.create(Algorithm.ECDSA_SHA1);
 
@@ -51,7 +52,14 @@ public class KeyGeneratorTest {
 
 		LocalDateTime notAfter = LocalDateTime.now().plusDays(365);
 
-		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", "PENTAIR", "PENTAIR POOL & SAP", Instant.now(), notAfter.atZone(ZoneId.of("UTC")).toInstant());
+		JsonObject claims = new JsonObject()//
+				.put("organization", "PENTAIR")//
+				.put("organizationalUnit", "PENTAIR POOL & SPA");
+
+		JsonObject options = new JsonObject()//
+				.put("notAfter", notAfter.atZone(ZoneId.of("UTC")).toInstant());
+
+		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", claims, options);
 
 		assertNotNull(cert);
 
@@ -61,7 +69,7 @@ public class KeyGeneratorTest {
 	}
 
 	@Test(expected = CertificateExpiredException.class)
-	public void validityCertTest() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, CertificateException, OperatorCreationException, SignatureException {
+	public void validityCertTest() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, CertificateException, OperatorCreationException, SignatureException, CertIOException {
 
 		KeyGenerator keyGen = KeyGenerator.create(Algorithm.ECDSA_SHA1);
 
@@ -71,7 +79,15 @@ public class KeyGeneratorTest {
 
 		LocalDateTime notAfter = LocalDateTime.now().minusDays(5);
 
-		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", "PENTAIR", "PENTAIR POOL & SAP", notBefore.atZone(ZoneId.of("UTC")).toInstant(), notAfter.atZone(ZoneId.of("UTC")).toInstant());
+		JsonObject claims = new JsonObject()//
+				.put("organization", "PENTAIR")//
+				.put("organizationalUnit", "PENTAIR POOL & SPA");
+
+		JsonObject options = new JsonObject()//
+				.put("notBefore", notBefore.atZone(ZoneId.of("UTC")).toInstant())//
+				.put("notAfter", notAfter.atZone(ZoneId.of("UTC")).toInstant());
+
+		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", claims, options);
 
 		assertNotNull(cert);
 
@@ -90,11 +106,22 @@ public class KeyGeneratorTest {
 
 		LocalDateTime notAfter = LocalDateTime.now().plusDays(365);
 
-		X509Certificate caCert = keyGen.createCertificate(caKeyPair, "intellipool.eu", "PENTAIR", "PENTAIR POOL & SAP", Instant.now(), notAfter.atZone(ZoneId.of("UTC")).toInstant());
+		JsonObject claims = new JsonObject()//
+				.put("organization", "PENTAIR")//
+				.put("organizationalUnit", "PENTAIR POOL & SPA");
+
+		JsonObject optionsCA = new JsonObject()//
+				.put("ca", true)//
+				.put("notAfter", notAfter.atZone(ZoneId.of("UTC")).toInstant());
+
+		X509Certificate caCert = keyGen.createCertificate(caKeyPair, "intellipool.eu", claims, optionsCA);
 
 		KeyPair keyPair = keyGen.generateKeyPair();
 
-		X509Certificate cert = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, "myObject", "PENTAIR POOL & SAP", "IoT", Instant.now(), notAfter.atZone(ZoneId.of("UTC")).toInstant());
+		JsonObject options = new JsonObject()//
+				.put("notAfter", notAfter.atZone(ZoneId.of("UTC")).toInstant());
+
+		X509Certificate cert = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, "myObject", claims, options);
 
 		assertNotNull(cert);
 
@@ -111,7 +138,6 @@ public class KeyGeneratorTest {
 
 		KeyPair keyPair = keyGen.generateKeyPair();
 
-		
 		String privateKey = KeyGenerator.toPem(keyPair.getPrivate(), "PRIVATE KEY");
 
 		String publicKey = KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY");
@@ -131,7 +157,14 @@ public class KeyGeneratorTest {
 
 		LocalDateTime notAfter = LocalDateTime.now().plusDays(365);
 
-		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", "PENTAIR", "PENTAIR POOL & SAP", Instant.now(), notAfter.atZone(ZoneId.of("UTC")).toInstant());
+		JsonObject claims = new JsonObject()//
+				.put("organization", "PENTAIR")//
+				.put("organizationalUnit", "PENTAIR POOL & SPA");
+
+		JsonObject options = new JsonObject()//
+				.put("notAfter", notAfter.atZone(ZoneId.of("UTC")).toInstant());
+
+		X509Certificate cert = keyGen.createCertificate(keyPair, "intellipool.eu", claims, options);
 
 		String pemCert = KeyGenerator.toPem(cert, "test");
 
@@ -139,5 +172,5 @@ public class KeyGeneratorTest {
 
 		assertNotNull(certDecoded);
 	}
-	
+
 }

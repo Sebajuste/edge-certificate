@@ -11,7 +11,6 @@ import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
-import java.time.Instant;
 
 import io.edge.certificate.dao.CertificateDao;
 import io.edge.certificate.service.CertificateService;
@@ -37,7 +36,7 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void createCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, Handler<AsyncResult<JsonObject>> resultHandler) {
+	public void createCertificate(String account, String name, String algorithm, JsonObject claims, JsonObject options, Handler<AsyncResult<JsonObject>> resultHandler) {
 
 		Future<JsonObject> future = Future.future();
 
@@ -48,7 +47,7 @@ public class CertificateServiceImpl implements CertificateService {
 
 			KeyPair keyPair = keyGen.generateKeyPair();
 
-			X509Certificate x509Certificate = keyGen.createCertificate(keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), Instant.ofEpochSecond(notAfterTimestamp));
+			X509Certificate x509Certificate = keyGen.createCertificate(keyPair, claims.getString("commonName"), claims, options);
 
 			JsonObject keys = new JsonObject()//
 					.put("algorithm", algorithm) //
@@ -56,6 +55,8 @@ public class CertificateServiceImpl implements CertificateService {
 					.put("public", KeyGenerator.toPem(keyPair.getPublic(), "PUBLIC KEY"));
 
 			String cert = KeyGenerator.toPem(x509Certificate, name);
+
+			System.out.println(cert);
 
 			this.certificateDao.saveCertificate(account, name, keys, cert, ar -> {
 
@@ -93,9 +94,9 @@ public class CertificateServiceImpl implements CertificateService {
 	}
 
 	@Override
-	public void createSignedCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, String caCertName, Handler<AsyncResult<JsonObject>> resultHandler) {
+	public void createSignedCertificate(String account, String name, String caCertName, String algorithm, JsonObject claims, JsonObject options, Handler<AsyncResult<JsonObject>> resultHandler) {
 
-		LOGGER.info("createSignedCertificate");
+		LOGGER.info("createSignedCertificate [name=" + name + ", caCertName=" + caCertName + "]");
 
 		Future<JsonObject> future = Future.future();
 
@@ -109,7 +110,7 @@ public class CertificateServiceImpl implements CertificateService {
 					try {
 
 						JsonObject caCertificate = ar.result();
-						
+
 						JsonObject caKeys = caCertificate.getJsonObject("keys");
 
 						X509Certificate caCert = KeyGenerator.decodeCertificate(caCertificate.getString("certificate"));
@@ -118,7 +119,7 @@ public class CertificateServiceImpl implements CertificateService {
 
 						KeyPair keyPair = keyGen.generateKeyPair();
 
-						X509Certificate x509Certificate = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, claims.getString("commonName"), claims.getString("organization"), claims.getString("organizationalUnit"), Instant.now(), Instant.ofEpochSecond(notAfterTimestamp));
+						X509Certificate x509Certificate = keyGen.createSignedCertificate(caCert, caKeyPair, keyPair, claims.getString("commonName"), claims, options);
 
 						JsonObject keys = new JsonObject()//
 								.put("algorithm", algorithm) //
@@ -144,7 +145,7 @@ public class CertificateServiceImpl implements CertificateService {
 						});
 
 					} catch (Exception e) {
-						LOGGER.error(ar.cause());
+						LOGGER.error(e.getMessage(), e);
 						future.fail(e);
 					}
 
@@ -220,9 +221,9 @@ public class CertificateServiceImpl implements CertificateService {
 				JsonObject caCertificate = cf.resultAt(1);
 
 				try {
-					
+
 					JsonObject caKeys = caCertificate.getJsonObject("keys");
-					
+
 					X509Certificate cert = KeyGenerator.decodeCertificate(certificate.getString("certificate"));
 
 					KeyGenerator keyGen = KeyGenerator.create(Algorithm.valueOf(caKeys.getString("algorithm")));

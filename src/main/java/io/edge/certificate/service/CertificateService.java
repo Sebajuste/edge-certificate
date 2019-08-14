@@ -12,11 +12,11 @@ public interface CertificateService {
 
 	static final String ADDRESS = "edge.certificate.service";
 
-	void createCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, Handler<AsyncResult<JsonObject>> resultHandler);
+	void createCertificate(String account, String name, String algorithm, JsonObject claims, JsonObject options, Handler<AsyncResult<JsonObject>> resultHandler);
 
 	void addCrertificate(String account, String name, String certPEM, String privateKeyPEM, String publicKeyPEM, Handler<AsyncResult<Boolean>> resultHandler);
 
-	void createSignedCertificate(String account, String name, String algorithm, JsonObject claims, long notAfterTimestamp, String caCertName, Handler<AsyncResult<JsonObject>> resultHandler);
+	void createSignedCertificate(String account, String name, String caCertName, String algorithm, JsonObject claims, JsonObject options, Handler<AsyncResult<JsonObject>> resultHandler);
 
 	void verifyCertificate(String account, String certName, Handler<AsyncResult<Boolean>> resultHandler);
 

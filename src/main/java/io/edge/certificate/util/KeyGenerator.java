@@ -16,6 +16,7 @@ import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
@@ -34,11 +35,13 @@ import java.util.Objects;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x500.style.RFC4519Style;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
+import org.bouncycastle.cert.CertIOException;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
@@ -47,6 +50,7 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jcajce.provider.asymmetric.x509.CertificateFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
+import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
@@ -58,6 +62,8 @@ import org.bouncycastle.util.io.pem.PemObjectGenerator;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
 
+import io.vertx.core.json.JsonObject;
+
 public class KeyGenerator {
 
 	static {
@@ -67,12 +73,12 @@ public class KeyGenerator {
 	public static enum Algorithm {
 
 		RSA_SHA1("RSA", "SHA1withRSA", 1024),
-		RSA_SHA256("RSA", "SHA256withRSA", 1024),
+		RSA_SHA256("RSA", "SHA256withRSA", 2048),
 		ECDSA_SHA256("ECDSA", "SHA256withECDSA", 256),
 		ECDSA_SHA1("ECDSA", "SHA1withECDSA", 256);
 
 		private final String algo;
-		private final String signature; 
+		private final String signature;
 		private final int size;
 
 		Algorithm(String algo, String signature, int size) {
@@ -122,6 +128,37 @@ public class KeyGenerator {
 		return new KeyGenerator(algorithm);
 	}
 
+	private static X500Name createX500Name(String commonName, JsonObject claims) {
+
+		X500NameBuilder nameBuilder = new X500NameBuilder(RFC4519Style.INSTANCE); // RFC4519Style.INSTANCE
+																					// |
+																					// BCStyle.INSTANCE
+		nameBuilder.addRDN(BCStyle.CN, commonName);
+
+		if (claims != null) {
+			if (claims.containsKey("organization")) {
+				nameBuilder.addRDN(BCStyle.O, claims.getString("organization"));
+			}
+			if (claims.containsKey("organizationalUnit")) {
+				nameBuilder.addRDN(BCStyle.OU, claims.getString("organizationalUnit"));
+			}
+			if (claims.containsKey("locality")) {
+				nameBuilder.addRDN(BCStyle.L, claims.getString("locality"));
+			}
+			if (claims.containsKey("state")) {
+				nameBuilder.addRDN(BCStyle.ST, claims.getString("state"));
+			}
+			if (claims.containsKey("country")) {
+				nameBuilder.addRDN(BCStyle.C, claims.getString("country"));
+			}
+			if (claims.containsKey("email")) {
+				nameBuilder.addRDN(BCStyle.E, claims.getString("email"));
+			}
+		}
+
+		return nameBuilder.build();
+	}
+
 	public KeyPair decodeKeyPair(String privateBase64, String publicBase64) throws IOException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
 
 		PemReader parser = new PemReader(new InputStreamReader(new ByteArrayInputStream(privateBase64.getBytes()), "UTF-8"));
@@ -168,7 +205,7 @@ public class KeyGenerator {
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		new PemFile(key, description).write(out);
-		
+
 		return out.toString();
 	}
 
@@ -180,8 +217,8 @@ public class KeyGenerator {
 
 	public KeyPair generateKeyPair(String randomAlgo) throws NoSuchAlgorithmException, NoSuchProviderException {
 
-		KeyPairGenerator generator = KeyPairGenerator.getInstance(this.algorithm.algo);
-		
+		KeyPairGenerator generator = KeyPairGenerator.getInstance(this.algorithm.algo, "BC");
+
 		SecureRandom random = SecureRandom.getInstance(randomAlgo != null ? randomAlgo : "SHA1PRNG");
 
 		generator.initialize(this.algorithm.size, random);
@@ -190,38 +227,63 @@ public class KeyGenerator {
 
 		return keyPair;
 	}
-	
+
 	public KeyPair generateKeyPair() throws NoSuchAlgorithmException, NoSuchProviderException {
 		return this.generateKeyPair(null);
 	}
 
-	public X509Certificate createCertificate(KeyPair keyPair, String commonName, String organization, String organizationalUnitName, Date notBefore, Date notAfter) throws CertificateException, NoSuchAlgorithmException, NoSuchProviderException, OperatorCreationException, InvalidKeyException, SignatureException {
+	public X509Certificate createCertificate(KeyPair keyPair, String commonName, JsonObject claims, JsonObject options) throws CertificateException, NoSuchAlgorithmException, NoSuchProviderException, OperatorCreationException, InvalidKeyException, SignatureException, CertIOException {
 
 		Objects.requireNonNull(keyPair);
 		Objects.requireNonNull(commonName);
-		Objects.requireNonNull(notBefore);
-		Objects.requireNonNull(notAfter);
+		Objects.requireNonNull(options);
 
-		X500NameBuilder nameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
-		nameBuilder.addRDN(BCStyle.CN, commonName);
-		if (organization != null) {
-			nameBuilder.addRDN(BCStyle.O, organization);
+		X500Name dnName = KeyGenerator.createX500Name(commonName, claims);
+
+		BigInteger certSerialNumber = new BigInteger(160, new SecureRandom());
+
+		Date notBefore = Date.from(options.getInstant("notBefore", Instant.now()));
+
+		Date notAfter = Date.from(options.getInstant("notAfter"));
+
+		X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(dnName, certSerialNumber, notBefore, notAfter, dnName, keyPair.getPublic());
+
+		JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
+
+		if (options.getBoolean("ca", false)) {
+			certGen.addExtension(Extension.basicConstraints, false, new BasicConstraints(true));
+
+			certGen.addExtension(Extension.authorityKeyIdentifier, false, extUtils.createAuthorityKeyIdentifier(keyPair.getPublic()))//
+					.addExtension(Extension.subjectKeyIdentifier, false, extUtils.createSubjectKeyIdentifier(keyPair.getPublic()))//
+			// .addExtension(Extension.keyUsage, true, new
+			// KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyCertSign))//
+			;
+
 		}
-		if (organizationalUnitName != null) {
-			nameBuilder.addRDN(BCStyle.OU, organizationalUnitName);
+
+		/*
+		certGen.addExtension(Extension.authorityKeyIdentifier, false, extUtils.createAuthorityKeyIdentifier(keyPair.getPublic()))//
+				.addExtension(Extension.subjectKeyIdentifier, false, extUtils.createSubjectKeyIdentifier(keyPair.getPublic()))//
+				.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyCertSign))//
+		;
+		*/
+
+		/*
+		if (options.getBoolean("mutualAuthentication", false)) {
+			certGen.addExtension(Extension.extendedKeyUsage, true, new ExtendedKeyUsage(new KeyPurposeId[] { //
+					KeyPurposeId.id_kp_serverAuth, //
+					KeyPurposeId.id_kp_clientAuth//
+			}));
 		}
-		
-		X500Name issuer = nameBuilder.build();
+		*/
 
-		// SecureRandom secureRandom = SecureRandom.getInstanceStrong();
+		ContentSigner contentSigner = new JcaContentSignerBuilder(this.algorithm.signature).build(keyPair.getPrivate());
 
-		BigInteger serial = new BigInteger(64, new SecureRandom());
-		
-		X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(issuer, serial, notBefore, notAfter, issuer, keyPair.getPublic());
+		X509CertificateHolder certHolder = certGen.build(contentSigner);
 
-		X509CertificateHolder certHldr = certGen.build(new JcaContentSignerBuilder(this.algorithm.signature).setProvider("BC").build(keyPair.getPrivate()));
+		Provider bcProvider = new BouncyCastleProvider();
 
-		X509Certificate cert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(certHldr);
+		X509Certificate cert = new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certHolder);
 
 		cert.checkValidity(new Date());
 
@@ -231,28 +293,19 @@ public class KeyGenerator {
 
 	}
 
-	public X509Certificate createCertificate(KeyPair keyPair, String commonName, String organization, String organizationalUnitName, Instant notBefore, Instant notAfter) throws CertificateException, NoSuchAlgorithmException, NoSuchProviderException, OperatorCreationException, InvalidKeyException, SignatureException {
-		return createCertificate(keyPair, commonName, organization, organizationalUnitName, Date.from(notBefore), Date.from(notAfter));
-	}
-
-	public X509Certificate createSignedCertificate(X509Certificate caCert, KeyPair caKeyPair, KeyPair keyPair, String commonName, String organization, String organizationalUnitName, Date notBefore, Date notAfter) throws OperatorCreationException, PKCSException, NoSuchAlgorithmException, NoSuchProviderException, IOException, CertificateException {
+	public X509Certificate createSignedCertificate(X509Certificate caCert, KeyPair caKeyPair, KeyPair keyPair, String commonName, JsonObject claims, JsonObject options ) throws OperatorCreationException, PKCSException, NoSuchAlgorithmException, NoSuchProviderException, IOException, CertificateException {
 
 		Objects.requireNonNull(caCert);
 		Objects.requireNonNull(caKeyPair);
 		Objects.requireNonNull(commonName);
-		Objects.requireNonNull(notBefore);
-		Objects.requireNonNull(notAfter);
+		Objects.requireNonNull(options);
 
-		X500NameBuilder nameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
-		nameBuilder.addRDN(BCStyle.CN, commonName);
-		if (organization != null) {
-			nameBuilder.addRDN(BCStyle.O, organization);
-		}
-		if (organizationalUnitName != null) {
-			nameBuilder.addRDN(BCStyle.OU, organizationalUnitName);
-		}
 
-		X500Name issuer = nameBuilder.build();
+		Date notBefore = Date.from(options.getInstant("notBefore", Instant.now()));
+
+		Date notAfter = Date.from(options.getInstant("notAfter"));
+		
+		X500Name issuer = KeyGenerator.createX500Name(commonName, claims);
 
 		JcaPKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(issuer, keyPair.getPublic());
 
@@ -262,22 +315,43 @@ public class KeyGenerator {
 			throw new CertificateException("Failed verify check");
 		}
 
-		X500Name caissuer = new X500Name(caCert.getSubjectX500Principal().getName());
-		BigInteger serial = new BigInteger(32, new SecureRandom());
+		X500Name dnName = new X500Name(caCert.getSubjectX500Principal().getName());
+		BigInteger certSerialNumber = new BigInteger(32, new SecureRandom());
 
-		X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(caissuer, serial, notBefore, notAfter, csr.getSubject(), csr.getSubjectPublicKeyInfo());
+		X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(dnName, certSerialNumber, notBefore, notAfter, csr.getSubject(), csr.getSubjectPublicKeyInfo());
 
 		JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
-		certGen.addExtension(Extension.authorityKeyIdentifier, false, extUtils.createAuthorityKeyIdentifier(caCert)).addExtension(Extension.subjectKeyIdentifier, false, extUtils.createSubjectKeyIdentifier(keyPair.getPublic())).addExtension(Extension.basicConstraints, true, new BasicConstraints(0)).addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment)).addExtension(Extension.extendedKeyUsage, true, new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth));
+
+		if (options.getBoolean("ca", false)) {
+			certGen.addExtension(Extension.basicConstraints, false, new BasicConstraints(true));
+
+			certGen.addExtension(Extension.authorityKeyIdentifier, false, extUtils.createAuthorityKeyIdentifier(keyPair.getPublic()))//
+					.addExtension(Extension.subjectKeyIdentifier, false, extUtils.createSubjectKeyIdentifier(keyPair.getPublic()))//
+			// .addExtension(Extension.keyUsage, true, new
+			// KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyCertSign))//
+			;
+
+		}
+
+		/*
+		certGen.addExtension(Extension.authorityKeyIdentifier, false, extUtils.createAuthorityKeyIdentifier(caCert))//
+				.addExtension(Extension.subjectKeyIdentifier, false, extUtils.createSubjectKeyIdentifier(keyPair.getPublic()))//
+				.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyCertSign))//
+		;
+
+		if (options.getBoolean("mutualAuthentication", false)) {
+			certGen.addExtension(Extension.extendedKeyUsage, true, new ExtendedKeyUsage(new KeyPurposeId[] { //
+					KeyPurposeId.id_kp_serverAuth, //
+					KeyPurposeId.id_kp_clientAuth//
+			}));
+		}
+		*/
+		
 
 		X509CertificateHolder certHldr = certGen.build(new JcaContentSignerBuilder(this.algorithm.signature).setProvider("BC").build(caKeyPair.getPrivate()));
 
 		return new JcaX509CertificateConverter().setProvider("BC").getCertificate(certHldr);
 
-	}
-
-	public X509Certificate createSignedCertificate(X509Certificate caCert, KeyPair caKeyPair, KeyPair keyPair, String commonName, String organization, String organizationalUnitName, Instant notBefore, Instant notAfter) throws OperatorCreationException, NoSuchAlgorithmException, NoSuchProviderException, CertificateException, PKCSException, IOException {
-		return this.createSignedCertificate(caCert, caKeyPair, keyPair, commonName, organization, organizationalUnitName, Date.from(notBefore), Date.from(notAfter));
 	}
 
 }
